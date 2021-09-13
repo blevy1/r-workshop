@@ -1,0 +1,174 @@
+---
+title: "Chapter6_PivotTables_dplyr"
+author: "Ben Levy"
+date: "9/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+Chapter 6
+
+
+In R, we can use the dplyr package for pivot tables by using 2 functions group_by and summarize together with the pipe operator %>%. We will also continue to emphasize reproducibility in all our analyses.
+
+Discuss pivot tables in Excel
+Introduce group_by() %>% summarize() from the dplyr package
+Learn mutate() and select() to work column-wise
+Practice our reproducible workflow with RMarkdown and GitHub
+
+
+
+Wikipedia describes a pivot table as a “table of statistics that summarizes the data of a more extensive table…this summary might include sums, averages, or other statistics, which the pivot table groups together in a meaningful way.”
+
+
+
+6.2.2 RMarkdown setup
+Let’s start a new RMarkdown file in our repo, at the top-level (where it will be created by default in our Project). I’ll call mine pivot_lobsters.Rmd.
+
+In the setup chunk, let’s attach our libraries and read in our lobster data. In addition to the tidyverse package we will also use the skimr package. You will have to install it, but don’t want it to be installed every time you write your code. The following is a nice convention for having the install instructions available (on the same line) as the library() call.
+
+```{r}
+## attach libraries
+library(tidyverse)
+library(readxl)
+#install.packages('skimr')
+library(skimr) # 
+#install.packages('kableExtra')
+library(kableExtra) 
+library(here)
+```
+
+
+
+We used the read_excel() before, which is the generic function that reads both .xls and .xlsx files. Since we know that this is a .xlsx file, we will demo using the read_xlsx() function.
+
+We can expect that someone in the history of R and especially the history of the readxl package has needed to skip lines at the top of an Excel file before. So let’s look at the help pages ?read_xlsx: there is an argument called skip that we can set to 4 to skip 4 lines.
+
+```{r}
+## read in data
+##there is an argument called skip that we can set to 4 to skip 4 lines.
+lobsters <- read_xlsx(here("Data/lobsters.xlsx"), skip=4)
+```
+
+
+
+6.2.2.1 skimr::skim
+
+
+To look at summary statistics we’ve used summary, which is good for numeric columns, but it doesn’t give a lot of useful information for non-numeric data. So it means it wouldn’t tell us how many unique sites there are in this dataset. To have a look there I like using the skimr package:
+
+```{r}
+# explore data
+skimr::skim(lobsters) 
+##This skimr:: notation is a reminder to me that skim is from the skimr package. It is a nice convention: it’s a reminder to others (especially you!).
+```
+skim lets us look more at each variable. Here we can look at our character variables and see that there are 5 unique sites (in the n_unique output). Also, I particularly like looking at missing data. There are 6 missing values in the size_mm variable.
+
+
+
+6.4 group_by() %>% summarize()
+In R, we can create the functionality of pivot tables with the same logic: we will tell R to group by something and then summarize by something. 
+
+
+And in code, it looks like this:
+
+data %>%
+  group_by() %>% 
+  summarize()
+It reads: “Take the data and then group by something and then summarize by something.”
+
+The pipe operator %>% is a really critical feature of the dplyr package, originally created for the magrittr package. It lets us chain together steps of our data wrangling, enabling us to tell a clear story about our entire data analysis. This is not only a written story to archive what we’ve done, but it will be a reproducible story that can be rerun and remixed. It is not difficult to read as a human, and it is not a series of clicks to remember. Let’s try it out!
+
+
+
+6.4.1 group_by one variable
+Let’s use group_by() %>% summarize() with our lobsters data, just like we did in Excel. We will first group_by year and then summarize by count, using the function n() (in the dplyr package). n() counts the number of times an observation shows up, and since this is uncounted data, this will count each row.
+
+```{r}
+##We can say this out loud while we write it: “take the lobsters data and then group_by year and then summarize by count in a new column we’ll call count_by_year.”
+
+lobsters %>%
+  group_by(year) %>%
+  summarize(count_by_year = n())
+
+```
+
+Notice how together, group_by and summarize minimize the amount of information we see. We also saw this with the pivot table. We lose the other columns that aren’t involved here.
+
+
+
+
+6.4.2 group_by multiple variables
+
+Great. Now let’s summarize by both year and site like we did in the pivot table. We are able to group_by more than one variable. Let’s do this together:
+
+```{r}
+lobsters %>%
+  group_by(site, year) %>%
+  summarize(count_by_siteyear =  n())
+```
+
+We put the site first because that is what we want as an end product. But we could easily have put year first. We saw visually what would happen when we did this in the Pivot Table.
+
+
+6.4.3 summarize multiple variables
+
+We can summarize multiple variables at a time.
+
+So far we’ve summarized the count of lobster observations. Let’s also calculate the mean and standard deviation. First let’s use the mean() function to calculate the mean. We do this within the same summarize() function, but we can add a new line to make it easier to read. Notice how when you put your curser within the parenthesis and hit return, the indentation will automatically align.
+
+```{r}
+lobsters %>%
+  group_by(site, year) %>%
+  summarize(count_by_siteyear =  n(),
+            mean_size_mm = mean(size_mm))
+```
+Note: Command-I will properly indent selected lines.
+
+
+
+
+Great! But this will actually calculate some of the means as NA because one or more values in that year are NA. So we can pass an argument that says to remove NAs first before calculating the average. Let’s do that, and then also calculate the standard deviation with the sd() function:
+
+```{r}
+siteyear_summary <-
+  lobsters %>%
+  group_by(site, year) %>%
+  summarize(count_by_siteyear =  n(), 
+            mean_size_mm = mean(size_mm, na.rm=TRUE), 
+            sd_size_mm = sd(size_mm, na.rm=TRUE),
+            med_size_mm = median(size_mm, na.rm=TRUE))
+
+
+```
+
+
+```{r}
+siteyear_summary%>%
+  kable()
+```
+Here is how to reference variable values in a knitted markdown:
+
+There are `r nrow(lobsters)` total lobsters included in this report
+
+```{r}
+## a ggplot option:
+ggplot(data = siteyear_summary, aes(x = year, y = med_size_mm, color = site)) +
+  geom_line
+
+ggsave(here("figures", "lobsters-line.png"))
+```
+
+```{r}
+## another option:
+ggplot(siteyear_summary, aes(x = year, y = med_size_mm)) +
+  geom_col() +
+  facet_wrap(~site)
+```
+
